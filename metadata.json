@@ -1,0 +1,8 @@
+{
+  "name": "awh ريكس كود",
+  "description": "منصة awh ريكس كود المتطورة للذكاء الاصطناعي المتخصصة في عمليات التحليل والتوليد والبناء مع أدوات العلوم الحيوية والتكامل السحابي",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

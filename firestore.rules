@@ -1,0 +1,201 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Default-deny catch-all safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Global Helpers
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    function incoming() {
+      return request.resource.data;
+    }
+    function existing() {
+      return resource.data;
+    }
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      // For this platform, we check the role in the users collection
+      // OR if it's the bootstrapped admin email for initial setup
+      return isSignedIn() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin' ||
+        request.auth.token.email == 'admin@awh-platform.com'
+      );
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'plan', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'email', 'displayName', 'role', 'plan', 'createdAt', 'updatedAt'])
+        && data.uid is string && data.uid == request.auth.uid
+        && data.email is string && data.email.size() <= 255
+        && (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100))
+        && data.role is string && data.role in ['Admin', 'Teacher', 'Student']
+        && data.plan is string && data.plan in ['Free', 'Smart', 'VIP']
+        && data.createdAt is string && data.createdAt.size() <= 50;
+    }
+
+    // User Profile Management
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) 
+                    && incoming().role == 'Student' && incoming().plan == 'Free'; // Default on signup
+      allow update: if isSignedIn() && request.auth.uid == userId 
+                    && isValidUser(incoming())
+                    && incoming().role == existing().role // Users cannot change their own role
+                    && incoming().plan == existing().plan // Users cannot change their own plan (unless via payment logic, but for now we restrict)
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt']);
+      
+      // Admin override for role and plan assignment
+      allow update: if isAdmin() && isValidUser(incoming()) 
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'plan', 'updatedAt']);
+      
+      allow delete: if isAdmin();
+    }
+
+    // Live connection test route
+    match /test/{testId} {
+      allow get: if true;
+      allow write: if isSignedIn() && isValidId(testId);
+    }
+
+    // 2. Academic Records validation helper
+    function isValidAcademicRecord(data) {
+      return data.keys().hasAll(['userId', 'stage', 'title', 'subject', 'mode', 'content', 'createdAt'])
+        && data.keys().hasOnly(['userId', 'stage', 'grade', 'title', 'subject', 'mode', 'content', 'createdAt', 'metadata'])
+        && data.userId is string && data.userId == request.auth.uid
+        && data.stage is string && data.stage.size() <= 30
+        && (!('grade' in data) || (data.grade is string && data.grade.size() <= 60))
+        && data.title is string && data.title.size() <= 200
+        && data.subject is string && data.subject.size() <= 100
+        && data.mode is string && data.mode.size() <= 50
+        && data.content is string && data.content.size() <= 50000
+        && data.createdAt is string && data.createdAt.size() <= 50;
+    }
+
+    match /academic_records/{recordId} {
+      allow get: if isSignedIn() && isValidId(recordId) && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(recordId) && isValidAcademicRecord(incoming());
+      allow update: if isSignedIn() && isValidId(recordId) && isValidAcademicRecord(incoming())
+        && incoming().userId == existing().userId
+        && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'content', 'metadata', 'mode', 'grade']);
+      allow delete: if isSignedIn() && isValidId(recordId) && existing().userId == request.auth.uid;
+    }
+
+    // 3. Quiz Scores validation helper
+    function isValidQuizScore(data) {
+      return data.keys().hasAll(['userId', 'stage', 'quizTitle', 'score', 'total', 'percentage', 'createdAt'])
+        && data.keys().hasOnly(['userId', 'stage', 'quizTitle', 'score', 'total', 'percentage', 'createdAt'])
+        && data.userId is string && data.userId == request.auth.uid
+        && data.stage is string && data.stage.size() <= 30
+        && data.quizTitle is string && data.quizTitle.size() <= 200
+        && data.score is number && data.score >= 0
+        && data.total is number && data.total > 0
+        && data.percentage is number && data.percentage >= 0 && data.percentage <= 100
+        && data.createdAt is string && data.createdAt.size() <= 50;
+    }
+
+    match /quiz_scores/{scoreId} {
+      allow get: if isSignedIn() && isValidId(scoreId) && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(scoreId) && isValidQuizScore(incoming());
+      allow delete: if isSignedIn() && isValidId(scoreId) && existing().userId == request.auth.uid;
+    }
+
+    // 4. Study Schedules validation helper
+    function isValidStudySchedule(data) {
+      return data.keys().hasAll(['userId', 'stage', 'title', 'hoursPerDay', 'scheduleData', 'createdAt'])
+        && data.keys().hasOnly(['userId', 'stage', 'title', 'hoursPerDay', 'scheduleData', 'createdAt'])
+        && data.userId is string && data.userId == request.auth.uid
+        && data.stage is string && data.stage.size() <= 30
+        && data.title is string && data.title.size() <= 200
+        && data.hoursPerDay is number && data.hoursPerDay > 0 && data.hoursPerDay <= 24
+        && data.scheduleData is string && data.scheduleData.size() <= 50000
+        && data.createdAt is string && data.createdAt.size() <= 50;
+    }
+
+    match /study_schedules/{scheduleId} {
+      allow get: if isSignedIn() && isValidId(scheduleId) && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(scheduleId) && isValidStudySchedule(incoming());
+      allow update: if isSignedIn() && isValidId(scheduleId) && isValidStudySchedule(incoming())
+        && incoming().userId == existing().userId
+        && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'hoursPerDay', 'scheduleData']);
+      allow delete: if isSignedIn() && isValidId(scheduleId) && existing().userId == request.auth.uid;
+    }
+
+    // 5. Academic Comments validation helper
+    function isValidAcademicComment(data) {
+      return data.keys().hasAll(['userId', 'userName', 'stage', 'grade', 'subject', 'topic', 'commentText', 'createdAt'])
+        && data.keys().hasOnly(['userId', 'userName', 'stage', 'grade', 'subject', 'topic', 'commentText', 'createdAt'])
+        && data.userId is string && data.userId == request.auth.uid
+        && data.userName is string && data.userName.size() <= 100
+        && data.stage is string && data.stage.size() <= 50
+        && data.grade is string && data.grade.size() <= 60
+        && data.subject is string && data.subject.size() <= 100
+        && data.topic is string && data.topic.size() <= 200
+        && data.commentText is string && data.commentText.size() <= 5000
+        && data.createdAt is string && data.createdAt.size() <= 50;
+    }
+
+    match /academic_comments/{commentId} {
+      allow get: if isSignedIn() && isValidId(commentId);
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(commentId) && isValidAcademicComment(incoming());
+      allow delete: if isSignedIn() && isValidId(commentId) && existing().userId == request.auth.uid;
+    }
+
+    // 6. User Subscriptions and AI Quota rules
+    match /user_subscriptions/{userId} {
+      allow get: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // 7. Live Tutor Questions & Real-time Chat Overlay
+    function isValidTutorLiveQuestion(data) {
+      return data.keys().hasAll(['tutorId', 'studentName', 'text', 'createdAt'])
+        && data.tutorId is string && data.tutorId.size() <= 100
+        && data.studentName is string && data.studentName.size() <= 100
+        && data.text is string && data.text.size() <= 1000
+        && data.createdAt is string && data.createdAt.size() <= 50;
+    }
+
+    match /live_tutor_questions/{questionId} {
+      allow read: if true;
+      allow create: if isValidId(questionId) && isValidTutorLiveQuestion(incoming());
+      allow update: if isSignedIn() && isValidId(questionId);
+      allow delete: if isSignedIn() && isValidId(questionId);
+    }
+
+    // 8. Physics Puzzle Leaderboard validation helper
+    function isValidPhysicsLeaderboard(data) {
+      return data.keys().hasAll(['userId', 'userName', 'levelId', 'levelName', 'timeSeconds', 'createdAt'])
+        && data.keys().hasOnly(['userId', 'userName', 'levelId', 'levelName', 'timeSeconds', 'movesCount', 'stars', 'solvedAt', 'createdAt'])
+        && data.userId is string && data.userId.size() <= 128
+        && data.userName is string && data.userName.size() <= 100
+        && data.levelId is number && data.levelId >= 1 && data.levelId <= 50
+        && data.levelName is string && data.levelName.size() <= 100
+        && data.timeSeconds is number && data.timeSeconds > 0 && data.timeSeconds <= 3600
+        && (!('movesCount' in data) || (data.movesCount is number && data.movesCount >= 0))
+        && (!('stars' in data) || (data.stars is number && data.stars >= 1 && data.stars <= 3))
+        && (!('solvedAt' in data) || (data.solvedAt is string && data.solvedAt.size() <= 50))
+        && data.createdAt is string && data.createdAt.size() <= 50;
+    }
+
+    match /physics_leaderboard/{scoreId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if isValidId(scoreId) && isValidPhysicsLeaderboard(incoming());
+      allow update: if isSignedIn() && isValidId(scoreId) && existing().userId == request.auth.uid && isValidPhysicsLeaderboard(incoming());
+      allow delete: if isAdmin() || (isSignedIn() && isValidId(scoreId) && existing().userId == request.auth.uid);
+    }
+  }
+}
