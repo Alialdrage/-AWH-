@@ -9,7 +9,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import Groq from 'groq-sdk';
-import { createProxyMiddleware } from 'http-proxy-middleware';
 
 dotenv.config();
 
@@ -17,8 +16,40 @@ async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
+  // Behind a reverse proxy (Cloud Run, etc.) req.ip must come from X-Forwarded-For,
+  // otherwise every visitor shares the proxy's IP. Override with TRUST_PROXY (hops count) if needed.
+  app.set('trust proxy', process.env.TRUST_PROXY ? Number(process.env.TRUST_PROXY) : 1);
+
   // JSON body parser with generous limit for data & base64 images
   app.use(express.json({ limit: '50mb' }));
+
+  // Per-IP rate limit for the API (POST calls and image proxy). Every one of these
+  // routes spends paid AI quota, so they must not be open to unlimited use.
+  // Fixed window kept in memory: fine for a single instance.
+  const API_LIMIT_PER_MINUTE = Number(process.env.API_RATE_LIMIT_PER_MINUTE) || 120;
+  const apiHits = new Map<string, { count: number; resetAt: number }>();
+  app.use('/api', (req, res, next) => {
+    const spendsQuota = req.method === 'POST' || req.path.startsWith('/pollinations');
+    if (!spendsQuota) return next();
+
+    const now = Date.now();
+    if (apiHits.size > 10000) {
+      for (const [k, v] of apiHits) if (v.resetAt <= now) apiHits.delete(k);
+    }
+    const key = req.ip || 'unknown';
+    const hit = apiHits.get(key);
+    if (!hit || hit.resetAt <= now) {
+      apiHits.set(key, { count: 1, resetAt: now + 60_000 });
+      return next();
+    }
+    if (hit.count >= API_LIMIT_PER_MINUTE) {
+      const retryAfter = Math.ceil((hit.resetAt - now) / 1000);
+      res.setHeader('Retry-After', String(retryAfter));
+      return res.status(429).json({ error: `طلبات كثيرة، حاول بعد ${retryAfter} ثانية` });
+    }
+    hit.count += 1;
+    return next();
+  });
 
   // Initialize server-side Gemini client
   const ai = new GoogleGenAI({
@@ -52,18 +83,8 @@ async function startServer() {
     });
   });
 
-  // Add Proxy Middleware
-  app.use('/api/proxy', createProxyMiddleware({
-    target: 'http://localhost:3000', // Default target, should be dynamic in production
-    changeOrigin: true,
-    router: (req) => {
-      return req.headers['x-target-url'] as string || 'http://localhost:3000';
-    },
-    pathRewrite: {
-      '^/api/proxy': '',
-    },
-  }));
-
+  // NOTE: the former /api/proxy route was removed. It forwarded requests to any URL
+  // given in the X-Target-URL header (open proxy / SSRF), and nothing in the client used it.
 
   // Public address used by robots.txt and sitemap.xml. Set APP_URL to the public domain when hosting elsewhere.
   const SITE_URL = (process.env.APP_URL || 'https://awh-ai-platform-3.vercel.app').replace(/\/+$/, '');
@@ -357,7 +378,15 @@ ${systemInstruction ? `[إرشادات إضافية: ${systemInstruction}]\n` : 
         return res.status(400).json({ error: 'Prompt is required' });
       }
 
-      const pollUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt as string)}?width=${width}&height=${height}&seed=${seed || ''}&model=${model}`;
+      // Validate numeric/enum params so they cannot inject extra query parameters.
+      const dim = (v: unknown) => {
+        const n = Math.round(Number(v));
+        return Number.isFinite(n) ? Math.min(Math.max(n, 64), 2048) : 1024;
+      };
+      const safe = (v: unknown, fallback: string) =>
+        typeof v === 'string' && /^[\w.-]{1,40}$/.test(v) ? v : fallback;
+
+      const pollUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(String(prompt).slice(0, 2000))}?width=${dim(width)}&height=${dim(height)}&seed=${safe(seed, '')}&model=${safe(model, 'flux')}`;
       
       // Redirect or proxy the image stream
       res.redirect(pollUrl);
@@ -610,7 +639,8 @@ ${systemInstruction ? `[إرشادات إضافية: ${systemInstruction}]\n` : 
       const cacheCount = analysisCache.size + dataAnalyticsCache.size;
       analysisCache.clear();
       dataAnalyticsCache.clear();
-      freeDailyUsageTracker.clear();
+      // freeDailyUsageTracker is intentionally NOT cleared here: this endpoint is public,
+      // so clearing it would let anyone reset every free user's daily limit.
       return res.json({
         success: true,
         message: 'تم تنظيف ذاكرة التخزين المؤقتة للخادم والبيانات المؤقتة بنجاح',

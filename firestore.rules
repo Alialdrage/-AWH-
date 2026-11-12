@@ -23,9 +23,11 @@ service cloud.firestore {
     function isAdmin() {
       // For this platform, we check the role in the users collection
       // OR if it's the bootstrapped admin email for initial setup
+      // The bootstrap email only counts once it is verified; otherwise anyone could register
+      // that address and gain admin rights.
       return isSignedIn() && (
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin' ||
-        request.auth.token.email == 'admin@awh-platform.com'
+        (request.auth.token.email == 'admin@awh-platform.com' && request.auth.token.email_verified == true)
       );
     }
 
@@ -176,8 +178,9 @@ service cloud.firestore {
     // 6. User Subscriptions and AI Quota rules
     match /user_subscriptions/{userId} {
       allow get: if isSignedIn() && request.auth.uid == userId;
-      allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update: if isSignedIn() && request.auth.uid == userId;
+      // Plan/quota data must not be writable by the user it limits (they could grant themselves
+      // any plan). Nothing in the client writes this collection; changes go through an admin.
+      allow create, update: if isAdmin();
     }
 
     // 7. Live Tutor Questions & Real-time Chat Overlay

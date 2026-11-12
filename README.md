@@ -42,6 +42,8 @@ NODE_ENV=production npm start
 | `HERMES_API_KEY` و `HERMES_BASE_URL` | اختياري | نماذج Hermes عبر مزود متوافق مع OpenAI |
 | `APP_URL` | اختياري | الرابط العام للتطبيق (روابط OAuth) |
 | `PORT` | اختياري | المنفذ (الافتراضي 3000) |
+| `API_RATE_LIMIT_PER_MINUTE` | اختياري | حد طلبات الـ API لكل IP في الدقيقة (الافتراضي 120) |
+| `TRUST_PROXY` | اختياري | عدد وسطاء الـ proxy أمام الخادم لقراءة IP الزائر الصحيح (الافتراضي 1) |
 
 ## السكربتات | Scripts
 
