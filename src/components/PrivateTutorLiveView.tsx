@@ -17,6 +17,7 @@
  * - Save session notes & whiteboard summaries to Firestore / Drive
  */
 
+import { requestCameraStream, describeMediaError, watchStreamEnded } from '../utils/mediaAccess';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Video,
@@ -516,22 +517,18 @@ export const PrivateTutorLiveView: React.FC<PrivateTutorLiveViewProps> = ({
     }
 
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        onNotify('الكاميرا غير مدعومة في بيئة المتصفح الحالية', 'error');
-        return;
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 480 }, height: { ideal: 360 }, facingMode: 'user' },
-        audio: false,
+      const { stream } = await requestCameraStream({ audio: false, width: 480, height: 360 });
+      watchStreamEnded(stream, () => {
+        setStudentStream(null);
+        setIsStudentCameraActive(false);
+        onNotify('انقطعت كاميرا الطالب. أعد تشغيلها للمشاركة.', 'error');
       });
-
       setStudentStream(stream);
       setIsStudentCameraActive(true);
       onNotify('تم تفعيل كاميرا الطالب للمشاركة المرئية المباشرة مع المدرس الخصوصي!', 'success');
-    } catch (e: any) {
-      console.warn('Student camera participation notice:', e);
-      onNotify('تعذر الوصول للكاميرا (تحقق من أذونات المتصفح)', 'info');
+    } catch (e: unknown) {
+      console.warn('Student camera error:', e);
+      onNotify(describeMediaError(e), 'error');
     }
   };
 
@@ -547,17 +544,19 @@ export const PrivateTutorLiveView: React.FC<PrivateTutorLiveViewProps> = ({
     }
   }, [studentStream, isStudentCameraActive]);
 
-  // Clean stream on unmount
+  // Stop each stream only when it is replaced or the view unmounts.
+  // (A single effect for both streams stopped the student's camera whenever the teacher's changed.)
   useEffect(() => {
     return () => {
-      if (studentStream) {
-        studentStream.getTracks().forEach((t) => t.stop());
-      }
-      if (teacherStream) {
-        teacherStream.getTracks().forEach((t) => t.stop());
-      }
+      studentStream?.getTracks().forEach((t) => t.stop());
     };
-  }, [studentStream, teacherStream]);
+  }, [studentStream]);
+
+  useEffect(() => {
+    return () => {
+      teacherStream?.getTracks().forEach((t) => t.stop());
+    };
+  }, [teacherStream]);
 
   // Attach teacher stream to video element
   useEffect(() => {
@@ -569,22 +568,36 @@ export const PrivateTutorLiveView: React.FC<PrivateTutorLiveViewProps> = ({
 
   // Start Teacher Live Camera Broadcast
   const handleStartTeacherCamera = async () => {
+    const hadStream = !!teacherStream;
+    if (teacherStream) {
+      teacherStream.getTracks().forEach((t) => t.stop());
+    }
     try {
-      if (teacherStream) {
-        teacherStream.getTracks().forEach((t) => t.stop());
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: 'user' },
-        audio: true,
+      const { stream, hasAudio } = await requestCameraStream({ audio: true, width: 1920, height: 1080 });
+      watchStreamEnded(stream, () => {
+        setTeacherStream(null);
+        setIsTeacherCamActive(false);
+        setTeacherBroadcastMode('avatar');
+        onNotify('انقطعت كاميرا الأستاذ، عاد البث إلى الأستاذ الذكي.', 'error');
       });
       setTeacherStream(stream);
       setIsTeacherCamActive(true);
       setIsTeacherScreenActive(false);
       setTeacherBroadcastMode('camera');
-      onNotify(`🎥 تم تشغيل كاميرا الأستاذ (${selectedTutor.name}) وبدء البث الحي المباشر!`, 'success');
-    } catch (err: any) {
+      onNotify(
+        hasAudio
+          ? `🎥 تم تشغيل كاميرا الأستاذ (${selectedTutor.name}) وبدء البث الحي المباشر!`
+          : `🎥 تم تشغيل كاميرا الأستاذ (${selectedTutor.name}) بدون صوت، لم يُسمح بالميكروفون.`,
+        hasAudio ? 'success' : 'info'
+      );
+    } catch (err: unknown) {
       console.error('Teacher camera error:', err);
-      onNotify('تعذر الوصول لكاميرا الأستاذ. يرجى التحقق من أذونات المتصفح.', 'error');
+      if (hadStream) {
+        setTeacherStream(null);
+        setIsTeacherCamActive(false);
+        setTeacherBroadcastMode('avatar');
+      }
+      onNotify(describeMediaError(err), 'error');
     }
   };
 
@@ -1327,7 +1340,7 @@ ${liveQuestions.map((q, idx) => `${idx + 1}. [${q.studentName}]: ${q.text} (ال
                     ref={teacherVideoRef}
                     autoPlay
                     playsInline
-                    muted={false}
+                    muted
                     className={`w-full h-full ${teacherBroadcastMode === 'camera' ? 'object-cover' : 'object-contain'}`}
                   />
                   <div className="absolute top-4 left-4 z-20 flex items-center gap-2">

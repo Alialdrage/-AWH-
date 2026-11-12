@@ -13,6 +13,7 @@
  * - Seamless bridge to Private 1-on-1 Tutor View
  */
 
+import { requestCameraStream, describeMediaError, watchStreamEnded } from '../utils/mediaAccess';
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Video, 
@@ -262,14 +263,17 @@ export const LessonsBroadcastView: React.FC<LessonsBroadcastViewProps> = ({
 
   // Start Camera Broadcast (Webcam)
   const handleStartCameraBroadcast = async () => {
+    const hadStream = !!localStream;
+    if (localStream) {
+      localStream.getTracks().forEach(track => track.stop());
+    }
     try {
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: 'user' },
-        audio: true,
+      const { stream, hasAudio } = await requestCameraStream({ audio: true, width: 1920, height: 1080 });
+      watchStreamEnded(stream, () => {
+        setLocalStream(null);
+        setIsBroadcastingCamera(false);
+        setSelectedLecture(prev => ({ ...prev, streamType: 'interactive', isHost: false }));
+        onNotify('انقطعت كاميرا المحاضر. أعد تشغيلها لمتابعة البث.', 'error');
       });
 
       setLocalStream(stream);
@@ -284,10 +288,19 @@ export const LessonsBroadcastView: React.FC<LessonsBroadcastViewProps> = ({
         isHost: true,
       }));
 
-      onNotify('🎥 تم بدء بث كاميرا المحاضر الحية والمايك بنجاح! أنت على الهواء الآن.', 'success');
-    } catch (err: any) {
+      onNotify(
+        hasAudio
+          ? '🎥 تم بدء بث كاميرا المحاضر الحية والمايك بنجاح! أنت على الهواء الآن.'
+          : '🎥 تم بدء البث بالكاميرا بدون صوت، لم يُسمح بالميكروفون.',
+        hasAudio ? 'success' : 'info'
+      );
+    } catch (err: unknown) {
       console.error('Camera broadcast error:', err);
-      onNotify('تعذر الوصول للكاميرا أو الميكروفون. يرجى منح الإذن في المتصفح.', 'error');
+      if (hadStream) {
+        setLocalStream(null);
+        setIsBroadcastingCamera(false);
+      }
+      onNotify(describeMediaError(err), 'error');
     }
   };
 
@@ -632,7 +645,7 @@ export const LessonsBroadcastView: React.FC<LessonsBroadcastViewProps> = ({
                     ref={localVideoRef}
                     autoPlay
                     playsInline
-                    muted={isAudioMuted}
+                    muted
                     className={`w-full h-full object-contain ${isBroadcastingCamera && !isSharingScreen ? 'scale-x-[-1]' : ''}`}
                   />
                   {/* Host watermark overlay */}
