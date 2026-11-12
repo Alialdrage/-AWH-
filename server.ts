@@ -9,8 +9,6 @@ import { createProxyMiddleware } from 'http-proxy-middleware';
 
 dotenv.config();
 
-// ... existing code ...
-
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
