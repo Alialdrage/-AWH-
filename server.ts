@@ -2,6 +2,10 @@ import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+// This package is ESM ("type": "module"), where __dirname is not defined by
+// default. Derive it from import.meta.url so the production static paths work.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import Groq from 'groq-sdk';
