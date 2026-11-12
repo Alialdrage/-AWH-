@@ -65,12 +65,17 @@ async function startServer() {
   }));
 
 
+  // Public address used by robots.txt and sitemap.xml. Set APP_URL to the public domain when hosting elsewhere.
+  const SITE_URL = (process.env.APP_URL || 'https://awh-ai-platform-3.vercel.app').replace(/\/+$/, '');
+
   // Google Search Engine & Web Crawlers: robots.txt
   app.get('/robots.txt', (req, res) => {
     res.type('text/plain');
     res.send(`User-agent: *
 Allow: /
-Sitemap: https://ais-pre-zo4ioldilagqsmuf6whnnc-920993121097.europe-west2.run.app/sitemap.xml
+Disallow: /api/
+
+Sitemap: ${SITE_URL}/sitemap.xml
 `);
   });
 
@@ -80,7 +85,7 @@ Sitemap: https://ais-pre-zo4ioldilagqsmuf6whnnc-920993121097.europe-west2.run.ap
     res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://ais-pre-zo4ioldilagqsmuf6whnnc-920993121097.europe-west2.run.app/</loc>
+    <loc>${SITE_URL}/</loc>
     <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>

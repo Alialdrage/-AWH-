@@ -60,6 +60,14 @@ NODE_ENV=production npm start
 - `firestore.rules`: قواعد أمان Firestore، راجعها قبل النشر
 - `vercel.json`: إعدادات إعادة التوجيه عند النشر على Vercel
 
+## النشر والفهرسة في Google | Publishing and Google indexing
+
+- حماية النشر في Vercel (Vercel Authentication / SSO) تمنع Googlebot من الوصول إلى الموقع. أوقفها للمشروع، أو اربط نطاقاً مخصصاً (النطاقات المخصصة غير مشمولة بالحماية الافتراضية).
+- الرابط الرسمي المستخدم في `index.html` (canonical وog:url وJSON-LD) و`robots.txt` و`sitemap.xml` هو `https://awh-ai-platform-3.vercel.app/`. عند ربط نطاق مخصص، غيّره في `index.html` وفي `public/sitemap.xml` و`public/robots.txt`، واضبط `APP_URL` لخادم Express.
+- `robots.txt` و`sitemap.xml` موجودان في `public/` ليُخدما مباشرةً على Vercel، لأن `vercel.json` يعيد توجيه كل المسارات إلى `index.html`.
+- بعد النشر: أضف الموقع إلى Google Search Console، وتحقق من الملكية (بوسم HTML في `index.html` أو عبر DNS)، ثم أرسل `https://<النطاق>/sitemap.xml`.
+- ملاحظة: مسارات `/api/*` تعمل في خادم Express (`server.ts`) فقط. نشر الواجهة وحدها على Vercel يُعيد `index.html` لهذه المسارات، لذا تحقق من مكان تشغيل الخادم قبل الاعتماد على ميزات الذكاء الاصطناعي.
+
 ## ملاحظات أمنية | Security notes
 
 - مفتاح Firebase في `firebase-applet-config.json` عام بطبيعته، والحماية الحقيقية تعتمد على `firestore.rules`.

@@ -15,7 +15,10 @@
     <meta name="author" content="A.W.H AI Studio - ركس.كود" />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <meta name="googlebot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
-    <link rel="canonical" href="https://ais-pre-zo4ioldilagqsmuf6whnnc-920993121097.europe-west2.run.app" />
+    <!-- Canonical address of the public site. Change it if a custom domain is attached. -->
+    <link rel="canonical" href="https://awh-ai-platform-3.vercel.app/" />
+    <!-- Google Search Console: paste the verification meta tag it gives you here, if you use the HTML-tag method. -->
+    <!-- <meta name="google-site-verification" content="PASTE_TOKEN_HERE" /> -->
 
     <!-- OpenGraph Metadata for Google & Social Media -->
     <meta property="og:type" content="website" />
@@ -24,7 +27,7 @@
       property="og:description"
       content="منصة A.W.H (ركس.كود) المتطورة للذكاء الاصطناعي للتحليل المعمق، وتوليد صور بدقة 4K، والتعليم الأكاديمي، وهندسة البرمجيات، ومختبر العلوم الحيوية، والمزامنة السحابية مع Google Drive."
     />
-    <meta property="og:url" content="https://ais-pre-zo4ioldilagqsmuf6whnnc-920993121097.europe-west2.run.app" />
+    <meta property="og:url" content="https://awh-ai-platform-3.vercel.app/" />
     <meta property="og:site_name" content="منصة A.W.H - ركس.كود" />
     <meta property="og:locale" content="ar_SA" />
     <meta property="og:locale:alternate" content="en_US" />
@@ -44,7 +47,7 @@
       "@type": "WebApplication",
       "name": "A.W.H AI Platform",
       "alternateName": ["منصة A.W.H للذكاء الاصطناعي", "ركس.كود", "ركس كود", "AWH"],
-      "url": "https://ais-pre-zo4ioldilagqsmuf6whnnc-920993121097.europe-west2.run.app",
+      "url": "https://awh-ai-platform-3.vercel.app/",
       "description": "منصة A.W.H (ركس.كود) المتطورة للذكاء الاصطناعي المتخصصة في التحليل المعمق، وتوليد الصور الفائقة بدقة 1K و 2K و 4K، والتعليم الأكاديمي والبحثي، وتشييد النظم المعمارية، ومختبر العلوم الحيوية 3D مع Google Drive.",
       "applicationCategory": "DeveloperApplication, BusinessApplication, EducationalApplication, MultimediaApplication",
       "operatingSystem": "All Web Browsers",
@@ -71,7 +74,16 @@
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   </head>
   <body class="bg-slate-950 text-slate-100 antialiased selection:bg-cyan-500/30 selection:text-cyan-200">
-    <div id="root"></div>
+    <div id="root">
+      <!-- Shown until the app loads. Gives crawlers and slow connections readable Arabic text. React replaces it. -->
+      <main class="min-h-screen flex flex-col items-center justify-center gap-4 px-6 text-center">
+        <h1 class="text-3xl font-black text-cyan-400">منصة A.W.H - ركس.كود للذكاء الاصطناعي</h1>
+        <p class="max-w-2xl text-sm leading-7 text-slate-300">
+          منصة ذكاء اصطناعي للتحليل المعمق، وتوليد الصور بدقة 4K، والتعليم الأكاديمي والجامعي، والمدرس الخصوصي المباشر،
+          ومختبر العلوم الحيوية ثلاثي الأبعاد، مع تكامل آمن مع Google Drive.
+        </p>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

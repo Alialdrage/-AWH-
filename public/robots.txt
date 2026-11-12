@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: https://awh-ai-platform-3.vercel.app/sitemap.xml
