@@ -89,6 +89,27 @@ service cloud.firestore {
       allow delete: if isSignedIn() && isValidId(recordId) && existing().userId == request.auth.uid;
     }
 
+    // Grade page content (educational content added by signed-in users)
+    function isValidGradeContent(data) {
+      return data.keys().hasAll(['userId', 'authorName', 'gradeId', 'stage', 'subject', 'title', 'body', 'createdAt'])
+        && data.keys().hasOnly(['userId', 'authorName', 'gradeId', 'stage', 'subject', 'title', 'body', 'createdAt'])
+        && data.userId is string && data.userId == request.auth.uid
+        && data.authorName is string && data.authorName.size() <= 100
+        && data.gradeId is string && data.gradeId.size() <= 30
+        && data.stage is string && data.stage.size() <= 30
+        && data.subject is string && data.subject.size() <= 100
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 200
+        && data.body is string && data.body.size() <= 20000
+        && data.createdAt is string && data.createdAt.size() <= 50;
+    }
+
+    match /grade_content/{contentId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(contentId) && isValidGradeContent(incoming());
+      allow update: if false;
+      allow delete: if isSignedIn() && isValidId(contentId) && existing().userId == request.auth.uid;
+    }
+
     // 3. Quiz Scores validation helper
     function isValidQuizScore(data) {
       return data.keys().hasAll(['userId', 'stage', 'quizTitle', 'score', 'total', 'percentage', 'createdAt'])

@@ -41,6 +41,7 @@ import {
   Coffee,
   Meh,
   Radio,
+  ArrowRight,
 } from 'lucide-react';
 import { uploadTextFileToDrive } from '../services/googleDriveService';
 import { SocialShareBar } from './SocialShareBar';
@@ -60,6 +61,10 @@ import {
   StudyScheduleRecord,
   AcademicComment,
   auth,
+  GradeContentRecord,
+  saveGradeContent,
+  getGradeContents,
+  deleteGradeContent,
 } from '../services/firestoreService';
 import { PrimaryEducationRooms, IRAQI_TEACHERS, PupilMood } from './PrimaryEducationRooms';
 import { IraqiAcademicAssistantSuite } from './IraqiAcademicAssistantSuite';
@@ -379,7 +384,16 @@ export const AcademicEducationView: React.FC<AcademicEducationViewProps> = ({
   const [isPostingComment, setIsPostingComment] = useState(false);
   const [showCommentsSection, setShowCommentsSection] = useState(true);
 
+  // Dedicated grade pages. 'pr6' is one page covering the scientific and literary branches.
+  const [openedPage, setOpenedPage] = useState<string | null>(null);
+  const [contentTitle, setContentTitle] = useState('');
+  const [contentBody, setContentBody] = useState('');
+  const [contentSubject, setContentSubject] = useState('');
+  const [gradeContents, setGradeContents] = useState<GradeContentRecord[]>([]);
+  const [isSavingContent, setIsSavingContent] = useState(false);
+
   useEffect(() => {
+    setOpenedPage(null);
     const grades = gradeDivisions[activeStage] || [];
     if (grades.length > 0) {
       setSelectedGradeId(grades[0].id);
@@ -396,6 +410,16 @@ export const AcademicEducationView: React.FC<AcademicEducationViewProps> = ({
       setSubject(currentGrade.subjects[0]);
     }
   }, [selectedGradeId]);
+
+  useEffect(() => {
+    if (!openedPage || !selectedGradeId) {
+      setGradeContents([]);
+      return;
+    }
+    getGradeContents(selectedGradeId)
+      .then(setGradeContents)
+      .catch(() => setGradeContents([]));
+  }, [openedPage, selectedGradeId]);
 
   const loadDatabaseRecords = async () => {
     setLoadingDb(true);
@@ -747,6 +771,202 @@ ${resultText || (quizData ? JSON.stringify(quizData, null, 2) : '')}`;
     });
   };
 
+  // One page per grade in primary, intermediate and preparatory stages.
+  type GradePage = { key: string; gradeIds: string[]; def: GradeDef };
+  const byGradeId = (id: string): GradeDef => currentStageGrades.find((g) => g.id === id) ?? currentStageGrades[0];
+  const gradePages: GradePage[] =
+    activeStage === 'preparatory'
+      ? [
+          { key: 'pr4', gradeIds: ['pr4'], def: byGradeId('pr4') },
+          { key: 'pr5', gradeIds: ['pr5'], def: byGradeId('pr5') },
+          { key: 'pr6', gradeIds: ['pr6_sci', 'pr6_lit'], def: { ...byGradeId('pr6_sci'), name: 'الصف السادس الإعدادي' } },
+        ]
+      : currentStageGrades.map((g) => ({ key: g.id, gradeIds: [g.id], def: g }));
+  const activePage = gradePages.find((p) => p.key === openedPage);
+
+  const openGradePage = (page: GradePage) => {
+    setOpenedPage(page.key);
+    setSelectedGradeId(page.gradeIds[0]);
+    setContentTitle('');
+    setContentBody('');
+    setContentSubject(page.def.subjects[0] || '');
+  };
+
+  const handleSaveGradeContent = async () => {
+    if (!activePage) return;
+    if (!auth.currentUser) {
+      onNotify('سجّل الدخول أولاً لإضافة المحتوى', 'error');
+      return;
+    }
+    if (!contentTitle.trim() || !contentBody.trim()) {
+      onNotify('أدخل عنوان المحتوى ونصه', 'error');
+      return;
+    }
+    setIsSavingContent(true);
+    try {
+      await saveGradeContent({
+        gradeId: selectedGradeId,
+        stage: activeStage,
+        subject: contentSubject || activePage.def.subjects[0] || 'عام',
+        title: contentTitle.trim(),
+        body: contentBody.trim(),
+      });
+      setContentTitle('');
+      setContentBody('');
+      setGradeContents(await getGradeContents(selectedGradeId));
+      onNotify('تمت إضافة المحتوى إلى الصف', 'success');
+    } catch {
+      onNotify('تعذر حفظ المحتوى، تحقق من تسجيل الدخول والصلاحيات', 'error');
+    } finally {
+      setIsSavingContent(false);
+    }
+  };
+
+  const handleDeleteGradeContent = async (id: string) => {
+    try {
+      await deleteGradeContent(id);
+      setGradeContents((prev) => prev.filter((item) => item.id !== id));
+      onNotify('تم حذف المحتوى', 'info');
+    } catch {
+      onNotify('تعذر حذف المحتوى', 'error');
+    }
+  };
+
+  // Hub: the grade pages of the chosen stage.
+  const gradeHub = (
+    <div className="space-y-4">
+      <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4">
+        <div className="flex items-center gap-2">
+          <Layers className="w-4 h-4 text-cyan-400" />
+          <h3 className="text-xs md:text-sm font-bold text-slate-100">صفحات الصفوف ({gradePages.length} صفحات)</h3>
+        </div>
+        <p className="text-[11px] text-slate-400 mt-1">اختر صفاً لفتح صفحته المخصصة، ويمكنك إضافة المحتوى التعليمي إليها.</p>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+        {gradePages.map((page) => (
+          <button
+            key={page.key}
+            onClick={() => openGradePage(page)}
+            className="p-3 rounded-xl border border-slate-800 bg-slate-950/70 text-slate-300 hover:bg-slate-800/80 hover:border-slate-700 text-right transition-all flex flex-col justify-between active:scale-95"
+          >
+            <div>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-cyan-300 block mb-1 w-fit">
+                {page.def.levelBadge}
+              </span>
+              <span className="text-xs font-bold leading-tight block">{page.def.name}</span>
+            </div>
+            <span className="text-[9px] text-slate-400 mt-2 line-clamp-2 leading-relaxed">{page.def.description}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  // Header of an opened grade page: back to the academic section, and branch switch for 6th preparatory.
+  const gradePageHeader = activePage ? (
+    <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-900/70 border border-slate-800">
+      <button
+        onClick={() => setOpenedPage(null)}
+        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition"
+      >
+        <ArrowRight className="w-3.5 h-3.5" />
+        <span>رجوع إلى قسم التعليم الأكاديمي</span>
+      </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-extrabold text-white">{activePage.def.name}</span>
+        {activePage.gradeIds.length > 1 &&
+          activePage.gradeIds.map((id) => (
+            <button
+              key={id}
+              onClick={() => setSelectedGradeId(id)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                selectedGradeId === id
+                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white'
+                  : 'bg-slate-900 border border-slate-800 text-slate-300 hover:text-white'
+              }`}
+            >
+              {byGradeId(id).name}
+            </button>
+          ))}
+      </div>
+    </div>
+  ) : null;
+
+  // Educational content added to this grade page.
+  const gradeContentPanel = activePage ? (
+    <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 space-y-3">
+      <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
+        <FileText className="w-4 h-4 text-emerald-400" />
+        <h3 className="text-xs md:text-sm font-bold text-slate-100">المحتوى التعليمي لهذا الصف</h3>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <input
+          value={contentTitle}
+          onChange={(e) => setContentTitle(e.target.value)}
+          placeholder="عنوان المحتوى (مثال: ملخص الدرس الأول)"
+          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500"
+        />
+        <select
+          value={contentSubject}
+          onChange={(e) => setContentSubject(e.target.value)}
+          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+        >
+          {activePage.def.subjects.map((subj) => (
+            <option key={subj} value={subj}>
+              {subj}
+            </option>
+          ))}
+        </select>
+      </div>
+      <textarea
+        rows={5}
+        value={contentBody}
+        onChange={(e) => setContentBody(e.target.value)}
+        placeholder="اكتب الشرح أو الملخص أو الأسئلة التي تريد إضافتها لهذا الصف"
+        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500"
+      />
+      <div className="flex justify-end">
+        <button
+          onClick={handleSaveGradeContent}
+          disabled={isSavingContent}
+          className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-bold disabled:opacity-50 transition"
+        >
+          {isSavingContent ? 'جارٍ الحفظ...' : 'إضافة المحتوى'}
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {gradeContents.length === 0 ? (
+          <p className="text-xs text-slate-500">لا يوجد محتوى مضاف لهذا الصف بعد.</p>
+        ) : (
+          gradeContents.map((item) => (
+            <div key={item.id} className="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-bold text-white">{item.title}</p>
+                  <p className="text-[10px] text-slate-400">
+                    {item.subject} • {item.authorName} • {new Date(item.createdAt).toLocaleDateString('ar-IQ')}
+                  </p>
+                </div>
+                {item.userId === auth.currentUser?.uid && (
+                  <button
+                    onClick={() => handleDeleteGradeContent(item.id)}
+                    className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                    title="حذف المحتوى"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-slate-300 mt-2 whitespace-pre-wrap leading-relaxed">{item.body}</p>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  ) : null;
+
   return (
     <div className="space-y-6">
       <SocialShareBar onNotify={onNotify} onNavigateHome={onNavigateHome} />
@@ -951,11 +1171,14 @@ ${resultText || (quizData ? JSON.stringify(quizData, null, 2) : '')}`;
           )}
 
           {/* Render the appropriate view */}
-          {activeStage === 'primary' && primaryViewMode === 'interactive_room' ? (
-            <PrimaryEducationRooms
-              onNotify={onNotify}
-              onBackToMainAcademic={() => setPrimaryViewMode('academic_studio')}
-            />
+          {activeStage === 'primary' && primaryViewMode === 'interactive_room' && activePage ? (
+            <>
+              {gradePageHeader}
+              <PrimaryEducationRooms
+                onNotify={onNotify}
+                onBackToMainAcademic={() => setPrimaryViewMode('academic_studio')}
+              />
+            </>
           ) : activeStage === 'assistant' ? (
             <IraqiAcademicAssistantSuite
               onNotify={onNotify}
@@ -964,49 +1187,12 @@ ${resultText || (quizData ? JSON.stringify(quizData, null, 2) : '')}`;
               onBackToStages={() => setActiveStage('preparatory')}
               onNavigateToBroadcast={onNavigateToBroadcast}
             />
+          ) : !activePage ? (
+            gradeHub
           ) : (
             <>
-              {/* DEDICATED CLASS / GRADE SUBDIVISION (تقسيم الصفوف الدراسية) */}
-              <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800">
-                  <div className="flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-cyan-400" />
-                    <h3 className="text-xs md:text-sm font-bold text-slate-100">
-                      تقسيم الصفوف الدراسية المقررة ({currentStageGrades.length} صفوف):
-                    </h3>
-                  </div>
-                  <span className="text-[11px] text-cyan-400 font-medium">
-                    الصف المختار حالياً: <strong className="text-white font-bold">{currentGrade?.name}</strong>
-                  </span>
-                </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-              {currentStageGrades.map((g) => {
-                const isSelected = selectedGradeId === g.id;
-                return (
-                  <button
-                    key={g.id}
-                    onClick={() => setSelectedGradeId(g.id)}
-                    className={`p-3 rounded-xl border text-right transition-all flex flex-col justify-between active:scale-95 ${
-                      isSelected
-                        ? 'bg-gradient-to-br from-cyan-600/30 to-blue-600/30 border-cyan-400 text-white font-bold shadow-md ring-1 ring-cyan-400'
-                        : 'bg-slate-950/70 border-slate-800 text-slate-300 hover:bg-slate-800/80 hover:border-slate-700'
-                    }`}
-                  >
-                    <div>
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-cyan-300 block mb-1 w-fit">
-                        {g.levelBadge}
-                      </span>
-                      <span className="text-xs font-bold leading-tight block">{g.name}</span>
-                    </div>
-                    <span className="text-[9px] text-slate-400 mt-2 line-clamp-2 leading-relaxed">
-                      {g.description}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+              {gradePageHeader}
+              {gradeContentPanel}
 
           {/* Model switcher and current class info */}
           <div className="bg-slate-900/50 border border-slate-800/80 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">

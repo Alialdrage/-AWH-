@@ -895,3 +895,67 @@ export function subscribePhysicsLeaderboard(
 }
 
 
+
+// ---------------------------------------------------------------------------
+// Grade pages: educational content added by users to a specific grade page
+// ---------------------------------------------------------------------------
+
+export interface GradeContentRecord {
+  id: string;
+  userId: string;
+  authorName: string;
+  gradeId: string;
+  stage: string;
+  subject: string;
+  title: string;
+  body: string;
+  createdAt: string;
+}
+
+export async function saveGradeContent(
+  record: Omit<GradeContentRecord, 'id' | 'userId' | 'authorName' | 'createdAt'>
+): Promise<string> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('AUTH_REQUIRED');
+
+  const contentId = `gc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const path = `grade_content/${contentId}`;
+  try {
+    await setDoc(doc(db, 'grade_content', contentId), {
+      ...record,
+      userId: user.uid,
+      authorName: user.displayName || 'مستخدم',
+      createdAt: new Date().toISOString(),
+    });
+    return contentId;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, path);
+  }
+}
+
+export async function getGradeContents(gradeId: string): Promise<GradeContentRecord[]> {
+  if (!auth.currentUser) return [];
+
+  const path = 'grade_content';
+  try {
+    const q = query(collection(db, path), where('gradeId', '==', gradeId));
+    const snapshot = await getDocs(q);
+    const results: GradeContentRecord[] = [];
+    snapshot.forEach((docSnap) => {
+      results.push({ id: docSnap.id, ...(docSnap.data() as Omit<GradeContentRecord, 'id'>) });
+    });
+    // Newest first, sorted on the client to avoid requiring a composite index.
+    return results.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.LIST, path);
+  }
+}
+
+export async function deleteGradeContent(contentId: string): Promise<void> {
+  const path = `grade_content/${contentId}`;
+  try {
+    await deleteDoc(doc(db, 'grade_content', contentId));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
+  }
+}
