@@ -336,7 +336,8 @@ export const PrivateTutorLiveView: React.FC<PrivateTutorLiveViewProps> = ({
 
   // Real-time Chat Overlay Controls on Video
   const [isChatOverlayVisible, setIsChatOverlayVisible] = useState(true);
-  const [isOverlayMinimized, setIsOverlayMinimized] = useState(false);
+  // Start collapsed so the chat panel does not cover the live video; the student expands it on demand.
+  const [isOverlayMinimized, setIsOverlayMinimized] = useState(true);
   const [overlayOpacity, setOverlayOpacity] = useState<'high' | 'medium' | 'solid'>('medium');
   const [overlayInputText, setOverlayInputText] = useState('');
   const [isOverlayQuestionFlag, setIsOverlayQuestionFlag] = useState(true);
@@ -1445,13 +1446,13 @@ ${liveQuestions.map((q, idx) => `${idx + 1}. [${q.studentName}]: ${q.text} (ال
               {/* REAL-TIME CHAT OVERLAY ON VIDEO SCREEN (تراكب الدردشة الحية) */}
               {isChatOverlayVisible && (
                 <div
-                  className={`absolute bottom-16 right-3 sm:right-5 z-30 w-72 sm:w-84 rounded-2xl border border-cyan-500/40 shadow-2xl backdrop-blur-xl transition-all duration-300 overflow-hidden flex flex-col ${
+                  className={`absolute bottom-16 right-3 sm:right-5 z-30 w-60 sm:w-72 rounded-2xl border border-cyan-500/40 shadow-2xl backdrop-blur-sm transition-all duration-300 overflow-hidden flex flex-col ${
                     overlayOpacity === 'solid'
                       ? 'bg-slate-950'
                       : overlayOpacity === 'high'
                       ? 'bg-slate-950/90'
-                      : 'bg-slate-950/75'
-                  } ${isOverlayMinimized ? 'h-12' : 'max-h-[340px]'}`}
+                      : 'bg-slate-950/55'
+                  } ${isOverlayMinimized ? 'h-12' : 'max-h-[260px]'}`}
                 >
                   {/* Overlay Header */}
                   <div className="p-2.5 bg-black/50 border-b border-white/10 flex items-center justify-between text-xs">
@@ -1497,7 +1498,7 @@ ${liveQuestions.map((q, idx) => `${idx + 1}. [${q.studentName}]: ${q.text} (ال
                   {!isOverlayMinimized && (
                     <>
                       {/* Flowing Message Stream inside Overlay */}
-                      <div className="p-2.5 space-y-2 overflow-y-auto max-h-[220px] text-[11px] leading-snug">
+                      <div className="p-2.5 space-y-2 overflow-y-auto max-h-[140px] text-[11px] leading-snug">
                         {chatLog.slice(-10).map((msg) => (
                           <div
                             key={msg.id}

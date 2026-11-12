@@ -408,7 +408,7 @@ export default function App() {
           </div>
 
           {/* Nav Tabs */}
-          <nav className="hidden lg:flex items-center gap-1 bg-slate-900/80 p-1.5 rounded-2xl border border-slate-800 text-xs">
+          <nav className="hidden lg:flex min-w-0 max-w-full items-center gap-1 overflow-x-auto bg-slate-900/80 p-1.5 rounded-2xl border border-slate-800 text-xs">
             {[
               { id: 'main', label: 'الرئيسية', icon: Bot },
               { id: 'private_tutor', label: 'المدرس الخصوصي (بث مباشر)', icon: Video, highlight: true },
@@ -434,7 +434,7 @@ export default function App() {
                   key={tab.id}
                   onClick={() => navigateToTab(tab.id as any)}
                   title={tab.label}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition hover:shadow-[0_0_15px_rgba(6,182,212,0.6)] ${
+                  className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2 rounded-xl transition hover:shadow-[0_0_15px_rgba(6,182,212,0.6)] ${
                     isActive
                       ? isTutorLive
                         ? 'bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 text-white font-black shadow-md shadow-red-950/40 ring-1 ring-white/20'
