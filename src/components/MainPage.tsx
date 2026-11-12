@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Sparkles, Cpu, Dna, GraduationCap, Radio, Megaphone, Video, Palette, Trophy } from 'lucide-react';
+import { Search, Sparkles, Cpu, Dna, GraduationCap, Radio, Megaphone, Video, Palette, Trophy, BookOpen, Gamepad2 } from 'lucide-react';
 
 interface MainPageProps {
   onNavigate: (tab: string) => void;
@@ -10,6 +10,8 @@ export const MainPage: React.FC<MainPageProps> = ({ onNavigate }) => {
     { id: 'game', title: 'تحدي الفيزياء (ألعاب وألغاز ولوحة المتصدرين 🏆)', icon: Trophy },
     { id: 'private_tutor', title: 'المدرس الخصوصي (بث مباشر فيديو)', icon: Video },
     { id: 'academic', title: 'التعليم الأكاديمي', icon: GraduationCap },
+    { id: 'university', title: 'التعليم الجامعي والدراسات العليا', icon: BookOpen },
+    { id: 'game_industry', title: 'صناعة الألعاب والمحتوى', icon: Gamepad2 },
     { id: 'lessons_broadcast', title: 'بث الدروس والمحاضرات', icon: Radio },
     { id: 'graphics', title: 'محركات التصميم والجرافيكس (3D & Vector)', icon: Palette },
     { id: 'analysis', title: 'التحليل الذكي', icon: Search },

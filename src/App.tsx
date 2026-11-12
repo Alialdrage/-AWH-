@@ -31,6 +31,8 @@ import {
   Video,
   Palette,
   Shield,
+  BookOpen,
+  Gamepad2,
 } from 'lucide-react';
 import {
   initAuth,
@@ -42,6 +44,8 @@ import { GoogleSignInButton } from './components/GoogleSignInButton';
 import { ConfirmationModal } from './components/ConfirmationModal';
 import { MainPage } from './components/MainPage';
 import { SplashPage } from './components/SplashPage';
+import { KnowledgeSectionView } from './components/KnowledgeSectionView';
+import { universityCurriculum, gameIndustryCurriculum } from './services/knowledgeSections';
 import { AuthModal, UserDashboardView } from './components/AuthModal';
 import { GlobalQuickSearchBar } from './components/GlobalQuickSearchBar';
 import { auth } from './services/firestoreService';
@@ -94,7 +98,7 @@ const AdminDashboard = lazy(() =>
 );
 
 type ActiveTab =
-  | 'analysis' | 'generation' | 'builder' | 'bioscience' | 'academic' | 'chat' | 'drive' | 'ads' | 'private_tutor' | 'live' | 'dashboard' | 'game' | 'main' | 'lessons_broadcast' | 'graphics' | 'admin_login' | 'admin_dashboard';
+  | 'analysis' | 'generation' | 'builder' | 'bioscience' | 'academic' | 'chat' | 'drive' | 'ads' | 'private_tutor' | 'live' | 'dashboard' | 'game' | 'main' | 'lessons_broadcast' | 'graphics' | 'admin_login' | 'admin_dashboard' | 'university' | 'game_industry';
 
 // Map a URL path to the view it should show, so a reload or back/forward
 // keeps the user on the same page instead of falling back to 'main'.
@@ -403,6 +407,8 @@ export default function App() {
               { id: 'main', label: 'الرئيسية', icon: Bot },
               { id: 'private_tutor', label: 'المدرس الخصوصي (بث مباشر)', icon: Video, highlight: true },
               { id: 'academic', label: 'التعليم الأكاديمي', icon: GraduationCap },
+              { id: 'university', label: 'الجامعي والدراسات العليا', icon: BookOpen },
+              { id: 'game_industry', label: 'صناعة الألعاب والمحتوى', icon: Gamepad2 },
               { id: 'lessons_broadcast', label: 'بث الدروس', icon: Radio },
               { id: 'graphics', label: 'محركات التصميم والجرافيكس', icon: Palette },
               { id: 'ads', label: 'أعلن معنا', icon: Megaphone },
@@ -577,6 +583,8 @@ export default function App() {
           {[
             { id: 'private_tutor', label: 'مدرس خصوصي LIVE', icon: Video },
             { id: 'academic', label: 'التعليم', icon: GraduationCap },
+            { id: 'university', label: 'الجامعي', icon: BookOpen },
+            { id: 'game_industry', label: 'الألعاب', icon: Gamepad2 },
             { id: 'lessons_broadcast', label: 'بث الدروس', icon: Radio },
             { id: 'graphics', label: 'محركات التصميم', icon: Palette },
             { id: 'ads', label: 'إعلانات', icon: Megaphone },
@@ -676,6 +684,24 @@ export default function App() {
             isDriveConnected={!!user}
             onNavigateHome={() => navigateToTab('main')}
             onNavigateToBroadcast={() => navigateToTab('lessons_broadcast')}
+          />
+        )}
+
+        {activeTab === 'university' && (
+          <KnowledgeSectionView
+            storageKey="awh_progress_university"
+            curriculum={universityCurriculum}
+            accentClass="text-cyan-400"
+            onNavigateHome={() => navigateToTab('main')}
+          />
+        )}
+
+        {activeTab === 'game_industry' && (
+          <KnowledgeSectionView
+            storageKey="awh_progress_game_industry"
+            curriculum={gameIndustryCurriculum}
+            accentClass="text-emerald-400"
+            onNavigateHome={() => navigateToTab('main')}
           />
         )}
 
