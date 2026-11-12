@@ -45,7 +45,8 @@ import { ConfirmationModal } from './components/ConfirmationModal';
 import { MainPage } from './components/MainPage';
 import { SplashPage } from './components/SplashPage';
 import { KnowledgeSectionView } from './components/KnowledgeSectionView';
-import { universityCurriculum, gameIndustryCurriculum } from './services/knowledgeSections';
+import { UniversitySection } from './components/UniversitySection';
+import { gameIndustryCurriculum } from './services/knowledgeSections';
 import { AuthModal, UserDashboardView } from './components/AuthModal';
 import { GlobalQuickSearchBar } from './components/GlobalQuickSearchBar';
 import { auth } from './services/firestoreService';
@@ -688,12 +689,7 @@ export default function App() {
         )}
 
         {activeTab === 'university' && (
-          <KnowledgeSectionView
-            storageKey="awh_progress_university"
-            curriculum={universityCurriculum}
-            accentClass="text-cyan-400"
-            onNavigateHome={() => navigateToTab('main')}
-          />
+          <UniversitySection onNavigateHome={() => navigateToTab('main')} />
         )}
 
         {activeTab === 'game_industry' && (
