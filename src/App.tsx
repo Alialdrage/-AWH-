@@ -134,6 +134,12 @@ export default function App() {
     }
   }, [hasStarted]);
 
+  // Every view change starts at the top. Without this the new view opens at the previous
+  // scroll position, so only its lower half is visible until the user drags it back up.
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [activeTab]);
+
   // Keep the view in sync with browser back/forward navigation.
   useEffect(() => {
     const onPopState = () => setActiveTab(tabFromPath(window.location.pathname));
@@ -372,7 +378,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200">
-      <Suspense fallback={<div className="flex-1 flex items-center justify-center p-10 text-sm text-slate-400">جارٍ التحميل...</div>}>
       {/* Global Header */}
       <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-4">
@@ -624,6 +629,8 @@ export default function App() {
 
       {/* Main View Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+        {/* Only the view area waits for lazy chunks, so the header and modals stay on screen. */}
+        <Suspense fallback={<div className="flex items-center justify-center p-10 text-sm text-slate-400">جارٍ التحميل...</div>}>
         {(activeTab === 'private_tutor' || (activeTab as any) === 'live') && (
           <PrivateTutorLiveView
             onNotify={showNotification}
@@ -769,6 +776,7 @@ export default function App() {
         {activeTab === 'admin_dashboard' && isAdminAuthenticated && (
           <AdminDashboard />
         )}
+        </Suspense>
       </main>
 
       {/* Link & Google Publishing Modal */}
@@ -1009,7 +1017,6 @@ export default function App() {
         isOpen={isDatabaseExplorerOpen}
         onClose={() => setIsDatabaseExplorerOpen(false)}
       />
-      </Suspense>
     </div>
   );
 }
