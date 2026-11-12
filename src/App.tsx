@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { User } from 'firebase/auth';
 import {
   Search,
@@ -40,28 +40,58 @@ import {
 import { testConnection } from './services/firestoreService';
 import { GoogleSignInButton } from './components/GoogleSignInButton';
 import { ConfirmationModal } from './components/ConfirmationModal';
-import { AnalysisView } from './components/AnalysisView';
-import { GenerationView } from './components/GenerationView';
-import { BuilderView } from './components/BuilderView';
-import { BioscienceView } from './components/BioscienceView';
-import { AcademicEducationView } from './components/AcademicEducationView';
-import { ChatbotView } from './components/ChatbotView';
-import { DriveHubView } from './components/DriveHubView';
-import { PrivateTutorLiveView } from './components/PrivateTutorLiveView';
-import { AdsView } from './components/AdsView';
 import { MainPage } from './components/MainPage';
-import { LessonsBroadcastView } from './components/LessonsBroadcastView';
-import { GameView } from './game/GameView';
 import { SplashPage } from './components/SplashPage';
 import { AuthModal, UserDashboardView } from './components/AuthModal';
-import { GraphicsEnginesStudio } from './components/GraphicsEnginesStudio';
 import { GlobalQuickSearchBar } from './components/GlobalQuickSearchBar';
 import { auth } from './services/firestoreService';
 import { onAuthStateChanged } from 'firebase/auth';
 import { SubscriptionsModal } from './components/SubscriptionsModal';
 import { DatabaseExplorerModal } from './components/DatabaseExplorerModal';
-import { AdminLogin } from './components/AdminLogin';
-import { AdminDashboard } from './components/AdminDashboard';
+
+// Heavy views are loaded on demand to keep the initial bundle small.
+const AnalysisView = lazy(() =>
+  import('./components/AnalysisView').then((m) => ({ default: m.AnalysisView }))
+);
+const GenerationView = lazy(() =>
+  import('./components/GenerationView').then((m) => ({ default: m.GenerationView }))
+);
+const BuilderView = lazy(() =>
+  import('./components/BuilderView').then((m) => ({ default: m.BuilderView }))
+);
+const BioscienceView = lazy(() =>
+  import('./components/BioscienceView').then((m) => ({ default: m.BioscienceView }))
+);
+const AcademicEducationView = lazy(() =>
+  import('./components/AcademicEducationView').then((m) => ({ default: m.AcademicEducationView }))
+);
+const ChatbotView = lazy(() =>
+  import('./components/ChatbotView').then((m) => ({ default: m.ChatbotView }))
+);
+const DriveHubView = lazy(() =>
+  import('./components/DriveHubView').then((m) => ({ default: m.DriveHubView }))
+);
+const PrivateTutorLiveView = lazy(() =>
+  import('./components/PrivateTutorLiveView').then((m) => ({ default: m.PrivateTutorLiveView }))
+);
+const AdsView = lazy(() =>
+  import('./components/AdsView').then((m) => ({ default: m.AdsView }))
+);
+const LessonsBroadcastView = lazy(() =>
+  import('./components/LessonsBroadcastView').then((m) => ({ default: m.LessonsBroadcastView }))
+);
+const GameView = lazy(() =>
+  import('./game/GameView').then((m) => ({ default: m.GameView }))
+);
+const GraphicsEnginesStudio = lazy(() =>
+  import('./components/GraphicsEnginesStudio').then((m) => ({ default: m.GraphicsEnginesStudio }))
+);
+const AdminLogin = lazy(() =>
+  import('./components/AdminLogin').then((m) => ({ default: m.AdminLogin }))
+);
+const AdminDashboard = lazy(() =>
+  import('./components/AdminDashboard').then((m) => ({ default: m.AdminDashboard }))
+);
 
 type ActiveTab =
   | 'analysis' | 'generation' | 'builder' | 'bioscience' | 'academic' | 'chat' | 'drive' | 'ads' | 'private_tutor' | 'live' | 'dashboard' | 'game' | 'main' | 'lessons_broadcast' | 'graphics' | 'admin_login' | 'admin_dashboard';
@@ -337,6 +367,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200">
+      <Suspense fallback={<div className="flex-1 flex items-center justify-center p-10 text-sm text-slate-400">جارٍ التحميل...</div>}>
       {/* Global Header */}
       <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-4">
@@ -956,6 +987,7 @@ export default function App() {
         isOpen={isDatabaseExplorerOpen}
         onClose={() => setIsDatabaseExplorerOpen(false)}
       />
+      </Suspense>
     </div>
   );
 }
