@@ -63,11 +63,48 @@ import { DatabaseExplorerModal } from './components/DatabaseExplorerModal';
 import { AdminLogin } from './components/AdminLogin';
 import { AdminDashboard } from './components/AdminDashboard';
 
+type ActiveTab =
+  | 'analysis' | 'generation' | 'builder' | 'bioscience' | 'academic' | 'chat' | 'drive' | 'ads' | 'private_tutor' | 'live' | 'dashboard' | 'game' | 'main' | 'lessons_broadcast' | 'graphics' | 'admin_login' | 'admin_dashboard';
+
+// Map a URL path to the view it should show, so a reload or back/forward
+// keeps the user on the same page instead of falling back to 'main'.
+const tabFromPath = (path: string): ActiveTab => {
+  if (path === '/ads') return 'ads';
+  if (path === '/private-tutor' || path === '/live') return 'private_tutor';
+  return 'main';
+};
+
+const STARTED_KEY = 'awh_started';
+
 export default function App() {
-  const [hasStarted, setHasStarted] = useState(false);
-  const [activeTab, setActiveTab] = useState<
-    'analysis' | 'generation' | 'builder' | 'bioscience' | 'academic' | 'chat' | 'drive' | 'ads' | 'private_tutor' | 'live' | 'dashboard' | 'game' | 'main' | 'lessons_broadcast' | 'graphics' | 'admin_login' | 'admin_dashboard'
-  >('main');
+  // Remember that the splash screen was passed, so a page reload does not
+  // send the user back to the start screen.
+  const [hasStarted, setHasStarted] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem(STARTED_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() =>
+    tabFromPath(window.location.pathname)
+  );
+
+  useEffect(() => {
+    if (!hasStarted) return;
+    try {
+      sessionStorage.setItem(STARTED_KEY, '1');
+    } catch {
+      /* storage unavailable: fall back to the splash screen on reload */
+    }
+  }, [hasStarted]);
+
+  // Keep the view in sync with browser back/forward navigation.
+  useEffect(() => {
+    const onPopState = () => setActiveTab(tabFromPath(window.location.pathname));
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   // Auth & Drive State
   const [user, setUser] = useState<User | null>(null);
