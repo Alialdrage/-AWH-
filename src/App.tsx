@@ -121,6 +121,19 @@ export default function App() {
       return false;
     }
   });
+  // True while the private-tutor view is really broadcasting (camera, screen or external URL).
+  const [isTutorBroadcasting, setIsTutorBroadcasting] = useState(false);
+
+  // Show the broadcast in the browser tab title too, so it is visible from other tabs.
+  useEffect(() => {
+    if (!isTutorBroadcasting) return;
+    const original = document.title;
+    document.title = `🔴 بث مباشر | ${original}`;
+    return () => {
+      document.title = original;
+    };
+  }, [isTutorBroadcasting]);
+
   const [activeTab, setActiveTab] = useState<ActiveTab>(() =>
     tabFromPath(window.location.pathname)
   );
@@ -446,6 +459,12 @@ export default function App() {
                 >
                   <Icon className={`w-3.5 h-3.5 ${isTutorLive ? 'animate-pulse text-red-400' : ''}`} />
                   <span>{tab.label}</span>
+                  {tab.id === 'private_tutor' && isTutorBroadcasting && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-black text-white animate-pulse">
+                      <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                      LIVE
+                    </span>
+                  )}
                   {isTutorLive && (
                     <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping mr-0.5" />
                   )}
@@ -455,7 +474,9 @@ export default function App() {
           </nav>
 
           {/* Right Header: Firestore DB Badge + Avatar Return + Link & Google Publishing + Google Sign-In */}
-          <div className="flex items-center gap-2">
+          {/* min-w-0 + overflow-x-auto: on phones this row (~590px) is wider than the screen and
+              used to stretch the whole page sideways; now it scrolls inside the header instead. */}
+          <div className="flex min-w-0 items-center gap-2 overflow-x-auto [&>*]:shrink-0">
             <div
               className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border ${
                 isFirestoreConnected
@@ -587,7 +608,7 @@ export default function App() {
         {/* Mobile / Compact Tab Navigation */}
         <div className="lg:hidden flex items-center gap-1 overflow-x-auto px-4 py-2 bg-slate-900/60 border-t border-slate-800/80 text-xs">
           {[
-            { id: 'private_tutor', label: 'مدرس خصوصي LIVE', icon: Video },
+            { id: 'private_tutor', label: 'مدرس خصوصي', icon: Video },
             { id: 'academic', label: 'التعليم', icon: GraduationCap },
             { id: 'university', label: 'الجامعي', icon: BookOpen },
             { id: 'game_industry', label: 'الألعاب', icon: Gamepad2 },
@@ -621,6 +642,12 @@ export default function App() {
               >
                 <Icon className={`w-3 h-3 ${isTutorLive ? 'animate-pulse text-red-400' : ''}`} />
                 <span>{tab.label}</span>
+                  {tab.id === 'private_tutor' && isTutorBroadcasting && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-black text-white animate-pulse">
+                      <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                      LIVE
+                    </span>
+                  )}
               </button>
             );
           })}
@@ -633,6 +660,7 @@ export default function App() {
         <Suspense fallback={<div className="flex items-center justify-center p-10 text-sm text-slate-400">جارٍ التحميل...</div>}>
         {(activeTab === 'private_tutor' || (activeTab as any) === 'live') && (
           <PrivateTutorLiveView
+            onBroadcastStateChange={setIsTutorBroadcasting}
             onNotify={showNotification}
             onRequestDriveConfirmation={triggerDriveConfirmation}
             isDriveConnected={!!token}
