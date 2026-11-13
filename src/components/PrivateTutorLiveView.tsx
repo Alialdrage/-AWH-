@@ -94,6 +94,8 @@ interface PrivateTutorLiveViewProps {
   onNavigateHome?: () => void;
   onOpenSubscriptions?: () => void;
   onNavigateToBroadcast?: () => void;
+  /** Reports whether this browser is actually broadcasting (camera, screen or external URL). */
+  onBroadcastStateChange?: (isLive: boolean) => void;
 }
 
 export interface PrivateTutorDef {
@@ -251,6 +253,7 @@ export const PrivateTutorLiveView: React.FC<PrivateTutorLiveViewProps> = ({
   onNavigateHome,
   onOpenSubscriptions,
   onNavigateToBroadcast,
+  onBroadcastStateChange,
 }) => {
   const [selectedTutor, setSelectedTutor] = useState<PrivateTutorDef>(PRIVATE_TUTORS_LIST[0]);
   const [activeTab, setActiveTab] = useState<'stream' | 'tutor_dashboard' | 'whiteboard' | 'booking' | 'tutors_list'>('stream');
@@ -264,6 +267,17 @@ export const PrivateTutorLiveView: React.FC<PrivateTutorLiveViewProps> = ({
   const [teacherExternalUrl, setTeacherExternalUrl] = useState('');
   const [isTeacherExternalUrlModalOpen, setIsTeacherExternalUrlModalOpen] = useState(false);
 
+  // A broadcast truly exists only while a camera/screen stream (or an external URL) is on air.
+  // The LIVE badges below use this instead of a hard-coded "live" label.
+  const isBroadcastLive =
+    !!teacherStream || (teacherBroadcastMode === 'url' && !!teacherExternalUrl.trim());
+
+  useEffect(() => {
+    onBroadcastStateChange?.(isBroadcastLive);
+    return () => onBroadcastStateChange?.(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isBroadcastLive]);
+
   // Stream Player Controls
   const [isPlaying, setIsPlaying] = useState(true);
   const [isAudioMuted, setIsAudioMuted] = useState(false);
@@ -273,44 +287,137 @@ export const PrivateTutorLiveView: React.FC<PrivateTutorLiveViewProps> = ({
   const [streamQuality, setStreamQuality] = useState<'1080p 60fps' | '720p' | 'Auto HD'>('1080p 60fps');
   const [isFocusMode, setIsFocusMode] = useState(false);
 
-  // Live Session Recording State
+  // Live Session Recording: records the teacher's real camera/screen stream with MediaRecorder
+  // and saves the file to the user's device.
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const recordingTimerRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const recordingSecondsRef = useRef(0);
+  const [savedRecordings, setSavedRecordings] = useState<
+    Array<{ id: string; name: string; url: string; duration: string; sizeMB: string }>
+  >([]);
+  const savedRecordingUrlsRef = useRef<string[]>([]);
 
-  const handleToggleRecording = () => {
-    if (!isRecording) {
-      setIsRecording(true);
-      setRecordingSeconds(0);
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingSeconds((prev) => prev + 1);
-      }, 1000);
-      onNotify('بدء تسجيل الحصة المباشرة... جارٍ التقاط البث الصوتي والمرئي', 'success');
-    } else {
-      if (recordingTimerRef.current) {
-        clearInterval(recordingTimerRef.current);
-      }
+  const formatDuration = (total: number) =>
+    `${Math.floor(total / 60).toString().padStart(2, '0')}:${(total % 60).toString().padStart(2, '0')}`;
+
+  const finalizeRecording = (mimeType: string) => {
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    recordingTimerRef.current = null;
+    setIsRecording(false);
+    mediaRecorderRef.current = null;
+
+    const chunks = recordedChunksRef.current;
+    recordedChunksRef.current = [];
+    const blob = new Blob(chunks, { type: mimeType });
+    if (blob.size === 0) {
+      onNotify('لم يُلتقط أي محتوى في التسجيل، حاول مرة أخرى.', 'error');
+      return;
+    }
+
+    const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+    const safeTutor = selectedTutor.name.replace(/[\\/:*?"<>|]/g, '').trim();
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    // Local time (not UTC) so the file name matches the user's clock.
+    const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}`;
+    const fileName = `تسجيل_حصة_${safeTutor}_${stamp}.${ext}`;
+    const url = URL.createObjectURL(blob);
+    savedRecordingUrlsRef.current.push(url);
+    const duration = formatDuration(recordingSecondsRef.current);
+    const sizeMB = (blob.size / (1024 * 1024)).toFixed(1);
+
+    setSavedRecordings((prev) => [
+      { id: `${Date.now()}`, name: fileName, url, duration, sizeMB },
+      ...prev,
+    ]);
+
+    // Save to the device right away.
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    onNotify(`تم حفظ التسجيل على جهازك: ${fileName} (${duration}، ${sizeMB} MB)`, 'success');
+  };
+
+  const stopRecording = () => {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.stop(); // onstop -> finalizeRecording
+    } else if (isRecording) {
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
       setIsRecording(false);
-
-      const fileName = `تسجيل_حصة_بث_مباشر_${selectedTutor.name}_${Date.now()}.webm`;
-      const mins = Math.floor(recordingSeconds / 60);
-      const secs = recordingSeconds % 60;
-      const durationFormatted = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-
-      if (onRequestDriveConfirmation) {
-        onRequestDriveConfirmation({
-          title: 'حفظ تسجيل الحصة المباشرة في Google Drive',
-          message: `تم إنهاء تسجيل حصة البث مع ${selectedTutor.name} (المدة: ${durationFormatted}). هل ترغب بحفظ ملف التسجيل مباشرة في حساب Google Drive الخاص بك؟`,
-          itemDetails: `الملف: ${fileName}\nالمادة: ${selectedTutor.subject}\nالمدة: ${durationFormatted}`,
-          onConfirm: async () => {
-            onNotify(`تم حفظ تسجيل الحصة المباشرة بنجاح في Google Drive!`, 'success');
-          },
-        });
-      } else {
-        onNotify(`تم إيقاف التسجيل بنجاح (المدة: ${durationFormatted})`, 'success');
-      }
     }
   };
+
+  const handleToggleRecording = () => {
+    if (isRecording) {
+      stopRecording();
+      return;
+    }
+    if (!teacherStream) {
+      onNotify('لا يوجد بث لتسجيله. شغّل كاميرا الأستاذ أو مشاركة الشاشة أولاً، ثم ابدأ التسجيل.', 'info');
+      return;
+    }
+    if (typeof MediaRecorder === 'undefined') {
+      onNotify('متصفحك لا يدعم تسجيل الفيديو.', 'error');
+      return;
+    }
+
+    const mime = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+      'video/mp4',
+    ].find((t) => MediaRecorder.isTypeSupported(t));
+
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(teacherStream, mime ? { mimeType: mime } : undefined);
+    } catch {
+      onNotify('تعذر بدء التسجيل على هذا المتصفح.', 'error');
+      return;
+    }
+
+    recordedChunksRef.current = [];
+    recorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) recordedChunksRef.current.push(e.data);
+    };
+    recorder.onstop = () => finalizeRecording(recorder.mimeType || mime || 'video/webm');
+    recorder.start(1000);
+    mediaRecorderRef.current = recorder;
+
+    recordingSecondsRef.current = 0;
+    setRecordingSeconds(0);
+    setIsRecording(true);
+    recordingTimerRef.current = setInterval(() => {
+      recordingSecondsRef.current += 1;
+      setRecordingSeconds(recordingSecondsRef.current);
+    }, 1000);
+    onNotify('بدأ تسجيل الحصة المباشرة. سيُحفظ الملف على جهازك عند الإيقاف.', 'success');
+  };
+
+  // If the broadcast ends while recording, finish and save what was captured.
+  useEffect(() => {
+    if (isRecording && !teacherStream) stopRecording();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teacherStream]);
+
+  // Leaving the page: save any recording in progress and release the file URLs.
+  useEffect(() => {
+    return () => {
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== 'inactive') recorder.stop();
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      const urls = savedRecordingUrlsRef.current;
+      // Delay revoking so a download triggered by the final stop can start.
+      setTimeout(() => urls.forEach((u) => URL.revokeObjectURL(u)), 5000);
+    };
+  }, []);
 
   // Tutor Notes & Document Export State
   const [liveTutorNotesText, setLiveTutorNotesText] = useState<string>(
@@ -336,7 +443,8 @@ export const PrivateTutorLiveView: React.FC<PrivateTutorLiveViewProps> = ({
 
   // Real-time Chat Overlay Controls on Video
   const [isChatOverlayVisible, setIsChatOverlayVisible] = useState(true);
-  const [isOverlayMinimized, setIsOverlayMinimized] = useState(false);
+  // Start collapsed so the chat panel does not cover the live video; the student expands it on demand.
+  const [isOverlayMinimized, setIsOverlayMinimized] = useState(true);
   const [overlayOpacity, setOverlayOpacity] = useState<'high' | 'medium' | 'solid'>('medium');
   const [overlayInputText, setOverlayInputText] = useState('');
   const [isOverlayQuestionFlag, setIsOverlayQuestionFlag] = useState(true);
@@ -1043,10 +1151,17 @@ ${liveQuestions.map((q, idx) => `${idx + 1}. [${q.studentName}]: ${q.text} (ال
                     <h2 className="text-lg md:text-2xl font-black text-white tracking-tight flex items-center gap-2">
                       <span>قسم المدرس الخصوصي (بث مباشر فيديو)</span>
                     </h2>
-                    <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/40 text-xs font-black animate-pulse">
-                      <span className="w-2 h-2 rounded-full bg-red-400" />
-                      <span>مباشر LIVE الآن</span>
-                    </span>
+                    {isBroadcastLive ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/40 text-xs font-black animate-pulse">
+                        <span className="w-2 h-2 rounded-full bg-red-400" />
+                        <span>مباشر LIVE الآن</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-slate-800/80 text-slate-400 border border-slate-700 text-xs font-bold">
+                        <span className="w-2 h-2 rounded-full bg-slate-500" />
+                        <span>لا يوجد بث حالياً</span>
+                      </span>
+                    )}
                     <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-bold">
                       {selectedTutor.subject}
                     </span>
@@ -1204,14 +1319,24 @@ ${liveQuestions.map((q, idx) => `${idx + 1}. [${q.studentName}]: ${q.text} (ال
                 >
                   <div className="relative">
                     <span className="text-xl">{tutor.avatarEmoji}</span>
-                    <span className="absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500 border border-slate-950 animate-pulse" />
+                    <span
+                      className={`absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full border border-slate-950 ${
+                        isBroadcastLive && tutor.id === selectedTutor.id ? 'bg-red-500 animate-pulse' : 'bg-slate-600'
+                      }`}
+                    />
                   </div>
                   <div className="text-right">
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs font-black">{tutor.name}</span>
-                      <span className="text-[10px] px-1.5 rounded-full bg-red-500/20 text-red-300 font-mono">
-                        🔴 LIVE
-                      </span>
+                      {isBroadcastLive && tutor.id === selectedTutor.id ? (
+                        <span className="text-[10px] px-1.5 rounded-full bg-red-500/20 text-red-300 font-mono">
+                          🔴 LIVE
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-1.5 rounded-full bg-slate-800 text-slate-400">
+                          غير مباشر
+                        </span>
+                      )}
                     </div>
                     <span className="text-[10px] text-slate-400 block">{tutor.subject}</span>
                   </div>
@@ -1227,14 +1352,27 @@ ${liveQuestions.map((q, idx) => `${idx + 1}. [${q.studentName}]: ${q.text} (ال
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* VIDEO BROADCAST PLAYER: COL-SPAN-12 IN FOCUS MODE, OTHERWISE COL-SPAN-8 */}
           <div className={`${isFocusMode ? 'lg:col-span-12' : 'lg:col-span-8'} space-y-4 transition-all duration-300`}>
-            <div className="relative aspect-video w-full rounded-3xl bg-slate-950 border-2 border-slate-800 shadow-2xl overflow-hidden flex flex-col justify-between group">
+            <div className="relative w-full rounded-3xl bg-slate-950 border-2 border-slate-800 shadow-2xl overflow-hidden flex flex-col justify-between group">
               {/* TOP BAR OVERLAY */}
               <div className="z-20 p-4 bg-gradient-to-b from-slate-950/95 via-slate-950/60 to-transparent flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5">
-                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-600/90 text-white font-extrabold text-xs shadow-lg shadow-red-950/50 backdrop-blur-md animate-pulse">
-                    <span className="w-2 h-2 rounded-full bg-white" />
-                    <span>مباشر • LIVE</span>
-                  </div>
+                  {isBroadcastLive ? (
+                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-600/90 text-white font-extrabold text-xs shadow-lg shadow-red-950/50 backdrop-blur-md animate-pulse">
+                      <span className="w-2 h-2 rounded-full bg-white" />
+                      <span>مباشر • LIVE</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-800/90 text-slate-300 font-bold text-xs border border-white/10 backdrop-blur-md">
+                      <span className="w-2 h-2 rounded-full bg-slate-500" />
+                      <span>لا يوجد بث</span>
+                    </div>
+                  )}
+                  {isRecording && (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/70 text-red-300 text-xs font-mono font-bold border border-red-500/40 backdrop-blur-md">
+                      <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                      <span>REC {formatDuration(recordingSeconds)}</span>
+                    </div>
+                  )}
 
                   <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 text-slate-200 text-xs font-mono backdrop-blur-md border border-white/10">
                     <Users className="w-3.5 h-3.5 text-cyan-400" />
@@ -1333,9 +1471,11 @@ ${liveQuestions.map((q, idx) => `${idx + 1}. [${q.studentName}]: ${q.text} (ال
                 </div>
               )}
 
+              {/* Video stage: keeps 16:9; the card around it grows to fit the control bar */}
+              <div className="relative flex w-full aspect-video flex-none">
               {/* CENTER: TUTOR VIDEO / MEDIA BROADCAST STAGE */}
               {teacherBroadcastMode === 'camera' || teacherBroadcastMode === 'screen' ? (
-                <div className="relative flex-1 w-full h-full flex items-center justify-center bg-black overflow-hidden min-h-[360px]">
+                <div className="relative flex-1 w-full h-full flex items-center justify-center bg-black overflow-hidden">
                   <video
                     ref={teacherVideoRef}
                     autoPlay
@@ -1357,12 +1497,12 @@ ${liveQuestions.map((q, idx) => `${idx + 1}. [${q.studentName}]: ${q.text} (ال
                   </div>
                 </div>
               ) : teacherBroadcastMode === 'url' && teacherExternalUrl ? (
-                <div className="relative flex-1 w-full h-full flex items-center justify-center bg-black overflow-hidden min-h-[360px]">
+                <div className="relative flex-1 w-full h-full flex items-center justify-center bg-black overflow-hidden">
                   {getTutorEmbedUrl(teacherExternalUrl) ? (
                     <iframe
                       src={getTutorEmbedUrl(teacherExternalUrl)!}
                       title="بث المحاضرة الخصوصية المباشرة"
-                      className="w-full h-full min-h-[360px] border-0"
+                      className="w-full h-full border-0"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                       allowFullScreen
                     />
@@ -1371,7 +1511,7 @@ ${liveQuestions.map((q, idx) => `${idx + 1}. [${q.studentName}]: ${q.text} (ال
                       src={teacherExternalUrl}
                       controls
                       autoPlay
-                      className="w-full h-full min-h-[360px] object-contain"
+                      className="w-full h-full object-contain"
                     />
                   )}
                   <button
@@ -1445,13 +1585,13 @@ ${liveQuestions.map((q, idx) => `${idx + 1}. [${q.studentName}]: ${q.text} (ال
               {/* REAL-TIME CHAT OVERLAY ON VIDEO SCREEN (تراكب الدردشة الحية) */}
               {isChatOverlayVisible && (
                 <div
-                  className={`absolute bottom-16 right-3 sm:right-5 z-30 w-72 sm:w-84 rounded-2xl border border-cyan-500/40 shadow-2xl backdrop-blur-xl transition-all duration-300 overflow-hidden flex flex-col ${
+                  className={`absolute bottom-3 right-3 sm:right-5 z-30 w-60 sm:w-72 rounded-2xl border border-cyan-500/40 shadow-2xl backdrop-blur-sm transition-all duration-300 overflow-hidden flex flex-col ${
                     overlayOpacity === 'solid'
                       ? 'bg-slate-950'
                       : overlayOpacity === 'high'
                       ? 'bg-slate-950/90'
-                      : 'bg-slate-950/75'
-                  } ${isOverlayMinimized ? 'h-12' : 'max-h-[340px]'}`}
+                      : 'bg-slate-950/55'
+                  } ${isOverlayMinimized ? 'h-12' : 'max-h-[260px]'}`}
                 >
                   {/* Overlay Header */}
                   <div className="p-2.5 bg-black/50 border-b border-white/10 flex items-center justify-between text-xs">
@@ -1497,7 +1637,7 @@ ${liveQuestions.map((q, idx) => `${idx + 1}. [${q.studentName}]: ${q.text} (ال
                   {!isOverlayMinimized && (
                     <>
                       {/* Flowing Message Stream inside Overlay */}
-                      <div className="p-2.5 space-y-2 overflow-y-auto max-h-[220px] text-[11px] leading-snug">
+                      <div className="p-2.5 space-y-2 overflow-y-auto max-h-[140px] text-[11px] leading-snug">
                         {chatLog.slice(-10).map((msg) => (
                           <div
                             key={msg.id}
@@ -1569,6 +1709,7 @@ ${liveQuestions.map((q, idx) => `${idx + 1}. [${q.studentName}]: ${q.text} (ال
                   )}
                 </div>
               )}
+              </div>
 
               {/* LIVE ANNOUNCEMENT TICKER SCROLLER OVERLAY */}
               {liveAnnouncement && (
@@ -1609,7 +1750,7 @@ ${liveQuestions.map((q, idx) => `${idx + 1}. [${q.studentName}]: ${q.text} (ال
                 </div>
 
                 {/* Interaction Buttons */}
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={toggleHandRaise}
                     className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black transition shadow-md active:scale-95 ${
@@ -1672,15 +1813,33 @@ ${liveQuestions.map((q, idx) => `${idx + 1}. [${q.studentName}]: ${q.text} (ال
                         ? 'bg-red-600 text-white animate-pulse ring-2 ring-red-400'
                         : 'bg-slate-900 hover:bg-slate-850 text-red-400 border border-red-500/40'
                     }`}
-                    title="تسجيل الحصة المباشرة وحفظها في Google Drive"
+                    title="تسجيل بث الكاميرا أو الشاشة وحفظه كملف على جهازك"
                   >
                     <Radio className={`w-4 h-4 ${isRecording ? 'animate-ping' : ''}`} />
                     <span>
                       {isRecording
-                        ? `🔴 جاري التسجيل (${Math.floor(recordingSeconds / 60).toString().padStart(2, '0')}:${(recordingSeconds % 60).toString().padStart(2, '0')})`
+                        ? `⏹ إيقاف وحفظ (${formatDuration(recordingSeconds)})`
                         : 'تسجيل الحصة 🔴'}
                     </span>
                   </button>
+
+                  {savedRecordings.length > 0 && (
+                    <div className="w-full basis-full space-y-1.5" aria-label="التسجيلات المحفوظة">
+                      {savedRecordings.map((r) => (
+                        <a
+                          key={r.id}
+                          href={r.url}
+                          download={r.name}
+                          className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold hover:bg-emerald-950/60 transition"
+                        >
+                          <span className="truncate">💾 {r.name}</span>
+                          <span className="shrink-0 font-mono text-emerald-400/80">
+                            {r.duration} • {r.sizeMB} MB
+                          </span>
+                        </a>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Open Tutor Dashboard from video controls */}
                   <button
@@ -2345,10 +2504,17 @@ ${liveQuestions.map((q, idx) => `${idx + 1}. [${q.studentName}]: ${q.text} (ال
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 font-mono text-[10px] font-bold">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-                        <span>LIVE</span>
-                      </div>
+                      {isBroadcastLive && tutor.id === selectedTutor.id ? (
+                        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 font-mono text-[10px] font-bold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+                          <span>LIVE</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 text-[10px] font-bold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                          <span>غير مباشر</span>
+                        </div>
+                      )}
                     </div>
 
                     <p className="text-xs text-slate-300 leading-relaxed line-clamp-2">
